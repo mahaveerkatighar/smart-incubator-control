@@ -352,7 +352,8 @@ This project was developed by:
 - **Samyuga**
 - **Akshara Mikkilineni** 
 
-**Institution:**   
+**Institution:**   VNR Vignana Jyothi Institute of Engineering &Technology
+
 **Department:** Electronics & Communication Engineering  
 
 ## 📄 License
