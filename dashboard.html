@@ -1,0 +1,935 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Incubator Control Dashboard</title>
+    
+    <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-database-compat.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.3.0/dist/chart.umd.js"></script>
+    
+    <link href="https://fonts.googleapis.com/css2?family=Space+Mono:wght@400;700&family=JetBrains+Mono:wght@300;400;600&display=swap" rel="stylesheet">
+    
+    <style>
+        :root {
+            --primary: #00ff88;
+            --secondary: #0099ff;
+            --danger: #ff0066;
+            --warning: #ffaa00;
+            --bg-dark: #0a0e27;
+            --bg-card: #141b35;
+            --bg-elevated: #1a2440;
+            --text-primary: #ffffff;
+            --text-secondary: #8892b0;
+            --glow-primary: rgba(0, 255, 136, 0.3);
+            --glow-danger: rgba(255, 0, 102, 0.3);
+        }
+        
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            font-family: 'JetBrains Mono', monospace;
+            background: var(--bg-dark);
+            color: var(--text-primary);
+            overflow-x: hidden;
+        }
+        
+        body::before {
+            content: '';
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background-image: 
+                linear-gradient(rgba(0, 255, 136, 0.03) 1px, transparent 1px),
+                linear-gradient(90deg, rgba(0, 255, 136, 0.03) 1px, transparent 1px);
+            background-size: 50px 50px;
+            animation: gridMove 20s linear infinite;
+            z-index: 0;
+        }
+        
+        @keyframes gridMove {
+            0% { transform: translate(0, 0); }
+            100% { transform: translate(50px, 50px); }
+        }
+        
+        .container {
+            max-width: 1600px;
+            margin: 0 auto;
+            padding: 20px;
+            position: relative;
+            z-index: 1;
+        }
+        
+        .power-status {
+            position: fixed;
+            top: 20px;
+            left: 20px;
+            padding: 10px 20px;
+            border-radius: 20px;
+            font-size: 12px;
+            font-weight: 600;
+            z-index: 1000;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+        
+        .power-status.online {
+            background: rgba(0, 255, 136, 0.2);
+            border: 1px solid var(--primary);
+            color: var(--primary);
+        }
+        
+        .power-status.offline {
+            background: rgba(255, 0, 102, 0.2);
+            border: 1px solid var(--danger);
+            color: var(--danger);
+            animation: powerFailurePulse 1s infinite;
+        }
+        
+        @keyframes powerFailurePulse {
+            0%, 100% { opacity: 1; transform: scale(1); }
+            50% { opacity: 0.7; transform: scale(1.05); }
+        }
+        
+        .connection-status {
+            position: fixed;
+            top: 20px;
+            right: 20px;
+            padding: 10px 20px;
+            border-radius: 20px;
+            font-size: 12px;
+            font-weight: 600;
+            z-index: 1000;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+        
+        .connection-status.connected {
+            background: rgba(0, 255, 136, 0.2);
+            border: 1px solid var(--primary);
+            color: var(--primary);
+        }
+        
+        .connection-status.disconnected {
+            background: rgba(255, 0, 102, 0.2);
+            border: 1px solid var(--danger);
+            color: var(--danger);
+        }
+        
+        .status-dot {
+            width: 8px;
+            height: 8px;
+            border-radius: 50%;
+            animation: pulse 2s infinite;
+        }
+        
+        .status-dot.active {
+            background: var(--primary);
+        }
+        
+        .status-dot.inactive {
+            background: var(--danger);
+        }
+        
+        @keyframes pulse {
+            0%, 100% { transform: scale(1); opacity: 1; }
+            50% { transform: scale(1.3); opacity: 0.5; }
+        }
+        
+        .header {
+            text-align: center;
+            padding: 40px 20px;
+        }
+        
+        .header h1 {
+            font-family: 'Space Mono', monospace;
+            font-size: clamp(2rem, 5vw, 3.5rem);
+            font-weight: 700;
+            letter-spacing: -2px;
+            margin-bottom: 10px;
+            background: linear-gradient(135deg, var(--primary), var(--secondary));
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+        }
+        
+        .header .subtitle {
+            font-size: 14px;
+            color: var(--text-secondary);
+            text-transform: uppercase;
+            letter-spacing: 3px;
+        }
+        
+        .stats-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 20px;
+            margin-bottom: 30px;
+        }
+        
+        .stat-card {
+            background: var(--bg-card);
+            border: 1px solid rgba(0, 255, 136, 0.1);
+            border-radius: 12px;
+            padding: 25px;
+            transition: all 0.3s ease;
+        }
+        
+        .stat-card:hover {
+            transform: translateY(-4px);
+            box-shadow: 0 10px 30px var(--glow-primary);
+            border-color: var(--primary);
+        }
+        
+        .stat-label {
+            font-size: 11px;
+            text-transform: uppercase;
+            letter-spacing: 2px;
+            color: var(--text-secondary);
+            margin-bottom: 10px;
+        }
+        
+        .stat-value {
+            font-size: 36px;
+            font-weight: 700;
+            font-family: 'Space Mono', monospace;
+            color: var(--primary);
+            line-height: 1;
+        }
+        
+        .temp-unit {
+            font-size: 20px;
+            color: var(--text-secondary);
+            margin-left: 4px;
+        }
+        
+        .devices-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(450px, 1fr));
+            gap: 30px;
+            margin-bottom: 30px;
+        }
+        
+        .device-card {
+            background: var(--bg-card);
+            border: 1px solid rgba(0, 255, 136, 0.2);
+            border-radius: 16px;
+            overflow: hidden;
+        }
+        
+        .device-header {
+            background: linear-gradient(135deg, var(--bg-elevated), var(--bg-card));
+            padding: 20px 25px;
+            border-bottom: 1px solid rgba(0, 255, 136, 0.2);
+        }
+        
+        .device-title {
+            font-size: 20px;
+            font-weight: 600;
+            margin-bottom: 8px;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+        
+        .mode-badge {
+            padding: 4px 12px;
+            border-radius: 12px;
+            font-size: 11px;
+            font-weight: 600;
+            text-transform: uppercase;
+            background: rgba(0, 255, 136, 0.2);
+            color: var(--primary);
+            border: 1px solid var(--primary);
+        }
+        
+        .device-body {
+            padding: 25px;
+        }
+        
+        .temp-display {
+            background: var(--bg-elevated);
+            border-radius: 12px;
+            padding: 30px;
+            margin-bottom: 25px;
+            text-align: center;
+        }
+        
+        .temp-current {
+            font-size: 64px;
+            font-weight: 700;
+            font-family: 'Space Mono', monospace;
+            color: var(--primary);
+            margin-bottom: 15px;
+        }
+        
+        .control-section {
+            background: var(--bg-elevated);
+            border-radius: 12px;
+            padding: 20px;
+            margin-bottom: 20px;
+        }
+        
+        .control-label {
+            font-size: 12px;
+            text-transform: uppercase;
+            letter-spacing: 1.5px;
+            color: var(--text-secondary);
+            margin-bottom: 15px;
+        }
+        
+        .slider-container {
+            margin-bottom: 20px;
+        }
+        
+        .slider-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 10px;
+        }
+        
+        .slider-value {
+            font-size: 18px;
+            font-weight: 600;
+            color: var(--primary);
+            font-family: 'Space Mono', monospace;
+        }
+        
+        input[type="range"] {
+            width: 100%;
+            height: 6px;
+            border-radius: 3px;
+            background: rgba(0, 255, 136, 0.2);
+            outline: none;
+            -webkit-appearance: none;
+        }
+        
+        input[type="range"]::-webkit-slider-thumb {
+            -webkit-appearance: none;
+            width: 20px;
+            height: 20px;
+            border-radius: 50%;
+            background: var(--primary);
+            cursor: pointer;
+            box-shadow: 0 0 10px var(--glow-primary);
+        }
+        
+        .actuators-grid {
+            display: grid;
+            grid-template-columns: repeat(2, 1fr);
+            gap: 15px;
+            margin-bottom: 20px;
+        }
+        
+        .actuator {
+            background: var(--bg-elevated);
+            border: 1px solid rgba(0, 255, 136, 0.1);
+            border-radius: 10px;
+            padding: 20px;
+            text-align: center;
+            cursor: pointer;
+            transition: all 0.3s ease;
+        }
+        
+        .actuator.active {
+            background: rgba(0, 255, 136, 0.1);
+            border-color: var(--primary);
+            box-shadow: 0 0 20px var(--glow-primary);
+        }
+        
+        .actuator.manual-mode:hover {
+            transform: translateY(-2px);
+        }
+        
+        .actuator-icon {
+            font-size: 36px;
+            margin-bottom: 10px;
+        }
+        
+        .actuator-name {
+            font-size: 12px;
+            text-transform: uppercase;
+            color: var(--text-secondary);
+            margin-bottom: 8px;
+        }
+        
+        .actuator-status {
+            font-size: 14px;
+            font-weight: 600;
+            padding: 4px 12px;
+            border-radius: 12px;
+            display: inline-block;
+        }
+        
+        .status-on {
+            background: rgba(0, 255, 136, 0.2);
+            color: var(--primary);
+        }
+        
+        .status-off {
+            background: rgba(136, 136, 176, 0.1);
+            color: var(--text-secondary);
+        }
+        
+        .button-grid {
+            display: grid;
+            grid-template-columns: repeat(2, 1fr);
+            gap: 10px;
+        }
+        
+        .btn {
+            padding: 12px 20px;
+            border: 1px solid rgba(0, 255, 136, 0.3);
+            border-radius: 8px;
+            background: var(--bg-elevated);
+            color: var(--text-primary);
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 13px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            text-transform: uppercase;
+        }
+        
+        .btn:hover {
+            background: rgba(0, 255, 136, 0.1);
+            border-color: var(--primary);
+            box-shadow: 0 0 15px var(--glow-primary);
+        }
+        
+        .btn.active {
+            background: rgba(0, 255, 136, 0.2);
+            border-color: var(--primary);
+            color: var(--primary);
+        }
+        
+        .btn-danger {
+            border-color: rgba(255, 0, 102, 0.3);
+            grid-column: span 2;
+        }
+        
+        .btn-danger:hover {
+            background: rgba(255, 0, 102, 0.1);
+            border-color: var(--danger);
+        }
+        
+        .btn-primary {
+            background: rgba(0, 255, 136, 0.2);
+            border-color: var(--primary);
+            color: var(--primary);
+        }
+        
+        .chart-section {
+            background: var(--bg-card);
+            border: 1px solid rgba(0, 255, 136, 0.2);
+            border-radius: 16px;
+            padding: 25px;
+            margin-bottom: 30px;
+        }
+        
+        .chart-container {
+            position: relative;
+            height: 300px;
+        }
+        
+        .footer {
+            text-align: center;
+            padding: 20px;
+            color: var(--text-secondary);
+            font-size: 12px;
+        }
+        
+        @media (max-width: 768px) {
+            .devices-grid {
+                grid-template-columns: 1fr;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="power-status online" id="powerStatus">
+        <span>⚡</span>
+        <span>POWER: ONLINE</span>
+    </div>
+    
+    <div class="connection-status disconnected" id="connectionStatus">
+        <div class="status-dot inactive"></div>
+        <span>Connecting...</span>
+    </div>
+    
+    <div class="container">
+        <div class="header">
+            <h1>🔬 INCUBATOR CONTROL</h1>
+            <div class="subtitle">Medical Grade Monitoring System</div>
+        </div>
+        
+        <div class="stats-grid">
+            <div class="stat-card">
+                <div class="stat-label">Current Temperature</div>
+                <div class="stat-value" id="globalTemp">--.-<span class="temp-unit">°C</span></div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-label">Target Temperature</div>
+                <div class="stat-value" id="globalTarget">--.-<span class="temp-unit">°C</span></div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-label">System Status</div>
+                <div class="stat-value" id="globalStatus" style="font-size: 20px;">INIT</div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-label">Last Update</div>
+                <div class="stat-value" id="lastUpdate" style="font-size: 18px;">--:--:--</div>
+            </div>
+        </div>
+        
+        <div id="devicesContainer" class="devices-grid"></div>
+        
+        <div class="chart-section">
+            <div style="font-size: 18px; font-weight: 600; margin-bottom: 20px; color: var(--primary);">
+                📊 Temperature History (Last 60 readings)
+            </div>
+            <div class="chart-container">
+                <canvas id="tempChart"></canvas>
+            </div>
+        </div>
+        
+        <div class="footer">
+            <p>Incubator Control System v5.1</p>
+            <p>Authors: Mahaveer Katighar, S. Hema Vaishnavi, S.K Asifa, Samyuga, Akshara Mikkilineni</p>
+        </div>
+    </div>
+    
+    <script>
+        // ═══════════════════════════════════════════════════════════════
+        // FIREBASE CONFIGURATION - REPLACE WITH YOUR CREDENTIALS
+        // ═══════════════════════════════════════════════════════════════
+        
+        const firebaseConfig = {
+            apiKey: "YOUR_API_KEY",
+            authDomain: "your-project.firebaseapp.com",
+            databaseURL: "https://your-project-default-rtdb.region.firebasedatabase.app",
+            projectId: "your-project-id",
+            storageBucket: "your-project.firebasestorage.app",
+            messagingSenderId: "YOUR_SENDER_ID",
+            appId: "YOUR_APP_ID"
+        };
+        
+        let database;
+        try {
+            firebase.initializeApp(firebaseConfig);
+            database = firebase.database();
+            console.log('✓ Firebase initialized');
+        } catch (error) {
+            console.error('✗ Firebase init failed:', error);
+        }
+        
+        const HOSPITAL_NAME = 'City_Hospital';
+        const DEVICE_ID = 'INCUBATOR_001';
+        
+        let temperatureChart = null;
+        let chartHistory = [];
+        let deviceCards = new Set();
+        let currentMode = 'AUTO';
+        let lastDataReceived = 0;
+        
+        function checkPowerStatus() {
+            const now = Date.now();
+            const timeSinceLastData = now - lastDataReceived;
+            
+            if (lastDataReceived === 0) return;
+            
+            const powerElem = document.getElementById('powerStatus');
+            if (timeSinceLastData > 10000) {
+                powerElem.className = 'power-status offline';
+                powerElem.innerHTML = '<span>⚠️</span><span>POWER FAILURE!</span>';
+            } else {
+                powerElem.className = 'power-status online';
+                powerElem.innerHTML = '<span>⚡</span><span>POWER: ONLINE</span>';
+            }
+        }
+        
+        setInterval(checkPowerStatus, 2000);
+        
+        function updateConnectionStatus(connected) {
+            const statusElem = document.getElementById('connectionStatus');
+            const dot = statusElem.querySelector('.status-dot');
+            const text = statusElem.querySelector('span');
+            
+            if (connected) {
+                statusElem.className = 'connection-status connected';
+                dot.className = 'status-dot active';
+                text.textContent = 'Connected';
+            } else {
+                statusElem.className = 'connection-status disconnected';
+                dot.className = 'status-dot inactive';
+                text.textContent = 'Disconnected';
+            }
+        }
+        
+        function initDashboard() {
+            console.log('🚀 Initializing Dashboard...');
+            initChart();
+            
+            const deviceRef = database.ref(`${HOSPITAL_NAME}/devices/${DEVICE_ID}/current`);
+            
+            const connectedRef = database.ref('.info/connected');
+            connectedRef.on('value', (snapshot) => {
+                updateConnectionStatus(snapshot.val() === true);
+            });
+            
+            deviceRef.on('value', (snapshot) => {
+                const data = snapshot.val();
+                if (data) {
+                    lastDataReceived = Date.now();
+                    updateDevice(DEVICE_ID, data);
+                    updateGlobalStats(data);
+                    updateChart(data);
+                    updateTimestamp();
+                }
+            });
+            
+            console.log('✅ Dashboard initialized');
+        }
+        
+        function updateDevice(deviceId, current) {
+            if (!deviceCards.has(deviceId)) {
+                createDeviceCard(deviceId, current);
+                deviceCards.add(deviceId);
+            } else {
+                updateDeviceValues(deviceId, current);
+            }
+        }
+        
+        function createDeviceCard(deviceId, current) {
+            const container = document.getElementById('devicesContainer');
+            
+            const deviceCard = document.createElement('div');
+            deviceCard.className = 'device-card';
+            deviceCard.id = `device_${deviceId}`;
+            
+            deviceCard.innerHTML = `
+                <div class="device-header" id="header_${deviceId}">
+                    <div class="device-title">
+                        <span>${deviceId}</span>
+                        <span class="mode-badge" id="mode_${deviceId}">AUTO</span>
+                    </div>
+                    <div style="font-size: 12px; color: var(--text-secondary);">City Hospital • NICU Ward A</div>
+                </div>
+                
+                <div class="device-body">
+                    <div class="temp-display">
+                        <div class="temp-current" id="currentTemp_${deviceId}">
+                            --.-<span class="temp-unit">°C</span>
+                        </div>
+                        <div style="font-size: 14px; color: var(--text-secondary); margin-bottom: 5px;">Target Temperature</div>
+                        <div style="font-size: 24px; color: var(--secondary); font-weight: 600;" id="targetTemp_${deviceId}">
+                            --.-<span class="temp-unit">°C</span>
+                        </div>
+                    </div>
+                    
+                    <div class="control-section">
+                        <div class="control-label">⚙️ Temperature Control</div>
+                        <div class="slider-container">
+                            <div class="slider-header">
+                                <span style="font-size: 13px; color: var(--text-secondary);">Target Temperature</span>
+                                <span class="slider-value" id="tempSliderVal_${deviceId}">36.5°C</span>
+                            </div>
+                            <input type="range" 
+                                   id="tempSlider_${deviceId}" 
+                                   min="34" 
+                                   max="38" 
+                                   step="0.1" 
+                                   value="36.5"
+                                   oninput="updateTempValue('${deviceId}', this.value)">
+                        </div>
+                        
+                        <button class="btn btn-primary" onclick="applySettings('${deviceId}')">
+                            ✅ Apply Settings
+                        </button>
+                    </div>
+                    
+                    <div class="control-section">
+                        <div class="control-label">🔌 Actuators Control</div>
+                        <div class="actuators-grid" id="actuatorsGrid_${deviceId}">
+                            <div class="actuator" id="heaterAct_${deviceId}" onclick="toggleActuator('${deviceId}', 'heater')">
+                                <div class="actuator-icon">🔥</div>
+                                <div class="actuator-name">Heater</div>
+                                <div class="actuator-status status-off" id="heaterStatus_${deviceId}">OFF</div>
+                            </div>
+                            
+                            <div class="actuator" id="coolerAct_${deviceId}" onclick="toggleActuator('${deviceId}', 'cooler')">
+                                <div class="actuator-icon">❄️</div>
+                                <div class="actuator-name">Cooler</div>
+                                <div class="actuator-status status-off" id="coolerStatus_${deviceId}">OFF</div>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <div class="button-grid">
+                        <button class="btn" id="autoBtn_${deviceId}" onclick="setMode('${deviceId}', 'AUTO')">
+                            Auto Mode
+                        </button>
+                        <button class="btn" id="manualBtn_${deviceId}" onclick="setMode('${deviceId}', 'MANUAL')">
+                            Manual Mode
+                        </button>
+                        <button class="btn btn-danger" onclick="emergencyStop('${deviceId}')">
+                            🚨 Emergency Stop
+                        </button>
+                    </div>
+                </div>
+            `;
+            
+            container.appendChild(deviceCard);
+        }
+        
+        function updateDeviceValues(deviceId, current) {
+            const currentTemp = current.currentTemp || 0;
+            const targetTemp = current.targetTemp || 36.5;
+            const mode = current.mode || 'AUTO';
+            
+            currentMode = mode;
+            
+            const currentTempElem = document.getElementById(`currentTemp_${deviceId}`);
+            if (currentTempElem) {
+                currentTempElem.innerHTML = `${currentTemp.toFixed(1)}<span class="temp-unit">°C</span>`;
+            }
+            
+            const targetTempElem = document.getElementById(`targetTemp_${deviceId}`);
+            if (targetTempElem) {
+                targetTempElem.innerHTML = `${targetTemp.toFixed(1)}<span class="temp-unit">°C</span>`;
+            }
+            
+            const modeElem = document.getElementById(`mode_${deviceId}`);
+            if (modeElem) {
+                modeElem.textContent = mode;
+            }
+            
+            updateActuator(deviceId, 'heater', current.heaterState);
+            updateActuator(deviceId, 'cooler', current.coolerState);
+            
+            const autoBtn = document.getElementById(`autoBtn_${deviceId}`);
+            const manualBtn = document.getElementById(`manualBtn_${deviceId}`);
+            if (autoBtn && manualBtn) {
+                if (mode === 'AUTO') {
+                    autoBtn.classList.add('active');
+                    manualBtn.classList.remove('active');
+                } else {
+                    autoBtn.classList.remove('active');
+                    manualBtn.classList.add('active');
+                }
+            }
+            
+            const actuatorsGrid = document.getElementById(`actuatorsGrid_${deviceId}`);
+            if (actuatorsGrid) {
+                actuatorsGrid.querySelectorAll('.actuator').forEach(act => {
+                    if (mode === 'MANUAL') {
+                        act.classList.add('manual-mode');
+                    } else {
+                        act.classList.remove('manual-mode');
+                    }
+                });
+            }
+        }
+        
+        function updateActuator(deviceId, type, state) {
+            const actElement = document.getElementById(`${type}Act_${deviceId}`);
+            const statusElement = document.getElementById(`${type}Status_${deviceId}`);
+            
+            if (actElement && statusElement) {
+                if (state) {
+                    actElement.classList.add('active');
+                    statusElement.classList.remove('status-off');
+                    statusElement.classList.add('status-on');
+                    statusElement.textContent = 'ON';
+                } else {
+                    actElement.classList.remove('active');
+                    statusElement.classList.remove('status-on');
+                    statusElement.classList.add('status-off');
+                    statusElement.textContent = 'OFF';
+                }
+            }
+        }
+        
+        function toggleActuator(deviceId, type) {
+            if (currentMode !== 'MANUAL') {
+                alert('⚠️ Switch to MANUAL mode first!');
+                return;
+            }
+            
+            const statusElem = document.getElementById(`${type}Status_${deviceId}`);
+            const currentState = statusElem.textContent === 'ON';
+            const newState = !currentState;
+            
+            const command = {};
+            command[type] = newState;
+            command.timestamp = Date.now();
+            
+            database.ref(`${HOSPITAL_NAME}/devices/${deviceId}/commands`).update(command)
+                .then(() => console.log(`✓ ${type} set to ${newState ? 'ON' : 'OFF'}`))
+                .catch((error) => alert('Failed to control actuator'));
+        }
+        
+        function updateGlobalStats(current) {
+            const tempElem = document.getElementById('globalTemp');
+            const targetElem = document.getElementById('globalTarget');
+            const statusElem = document.getElementById('globalStatus');
+            
+            if (tempElem) {
+                tempElem.innerHTML = `${(current.currentTemp || 0).toFixed(1)}<span class="temp-unit">°C</span>`;
+            }
+            if (targetElem) {
+                targetElem.innerHTML = `${(current.targetTemp || 36.5).toFixed(1)}<span class="temp-unit">°C</span>`;
+            }
+            if (statusElem) {
+                statusElem.textContent = current.status || 'NORMAL';
+                statusElem.style.color = current.status === 'NORMAL' ? 'var(--primary)' : 'var(--danger)';
+            }
+        }
+        
+        function updateTempValue(deviceId, value) {
+            const elem = document.getElementById(`tempSliderVal_${deviceId}`);
+            if (elem) {
+                elem.textContent = parseFloat(value).toFixed(1) + '°C';
+            }
+        }
+        
+        function applySettings(deviceId) {
+            const tempSlider = document.getElementById(`tempSlider_${deviceId}`);
+            if (!tempSlider) return;
+            
+            const temp = parseFloat(tempSlider.value);
+            
+            database.ref(`${HOSPITAL_NAME}/devices/${deviceId}/commands`).update({
+                setTargetTemp: temp,
+                timestamp: Date.now()
+            }).then(() => {
+                console.log(`✓ Target temperature set to ${temp}°C`);
+            }).catch((error) => {
+                alert('Failed to apply settings');
+            });
+        }
+        
+        function setMode(deviceId, mode) {
+            database.ref(`${HOSPITAL_NAME}/devices/${deviceId}/commands`).update({
+                setMode: mode,
+                timestamp: Date.now()
+            }).then(() => {
+                console.log(`✓ Mode changed to: ${mode}`);
+                currentMode = mode;
+            }).catch((error) => {
+                alert('Failed to change mode');
+            });
+        }
+        
+        function emergencyStop(deviceId) {
+            if (confirm('⚠️ EMERGENCY STOP\n\nShut down all heating/cooling?')) {
+                database.ref(`${HOSPITAL_NAME}/devices/${deviceId}/commands`).set({
+                    emergencyStop: true,
+                    heater: false,
+                    cooler: false,
+                    timestamp: Date.now()
+                }).then(() => {
+                    alert('✅ Emergency stop activated!');
+                }).catch((error) => {
+                    alert('❌ Emergency stop failed!');
+                });
+            }
+        }
+        
+        function initChart() {
+            const ctx = document.getElementById('tempChart').getContext('2d');
+            
+            temperatureChart = new Chart(ctx, {
+                type: 'line',
+                data: {
+                    labels: [],
+                    datasets: [{
+                        label: 'Temperature',
+                        data: [],
+                        borderColor: '#00ff88',
+                        backgroundColor: 'rgba(0, 255, 136, 0.1)',
+                        borderWidth: 2,
+                        tension: 0.4
+                    }, {
+                        label: 'Target',
+                        data: [],
+                        borderColor: '#0099ff',
+                        borderDash: [5, 5],
+                        borderWidth: 2,
+                        pointRadius: 0
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    animation: false,
+                    plugins: {
+                        legend: {
+                            labels: { color: '#8892b0', font: { family: 'JetBrains Mono' } }
+                        }
+                    },
+                    scales: {
+                        y: {
+                            min: 34,
+                            max: 38,
+                            grid: { color: 'rgba(0, 255, 136, 0.1)' },
+                            ticks: { color: '#8892b0', font: { family: 'JetBrains Mono' } }
+                        },
+                        x: {
+                            grid: { color: 'rgba(0, 255, 136, 0.05)' },
+                            ticks: { 
+                                color: '#8892b0', 
+                                font: { family: 'JetBrains Mono' },
+                                maxTicksLimit: 10
+                            }
+                        }
+                    }
+                }
+            });
+        }
+        
+        function updateChart(current) {
+            if (!current || !temperatureChart) return;
+            
+            const now = new Date().toLocaleTimeString();
+            
+            if (chartHistory.length > 60) {
+                chartHistory.shift();
+            }
+            
+            chartHistory.push({
+                time: now,
+                temp: current.currentTemp || 0,
+                target: current.targetTemp || 36.5
+            });
+            
+            temperatureChart.data.labels = chartHistory.map(d => d.time);
+            temperatureChart.data.datasets[0].data = chartHistory.map(d => d.temp);
+            temperatureChart.data.datasets[1].data = chartHistory.map(d => d.target);
+            temperatureChart.update('none');
+        }
+        
+        function updateTimestamp() {
+            const elem = document.getElementById('lastUpdate');
+            if (elem) {
+                elem.textContent = new Date().toLocaleTimeString();
+            }
+        }
+        
+        window.addEventListener('load', () => {
+            console.log('Starting dashboard...');
+            initDashboard();
+        });
+    </script>
+</body>
+</html>
