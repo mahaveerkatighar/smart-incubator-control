@@ -1,0 +1,26 @@
+```
+# Configuration files with sensitive data
+config.h
+config.py
+dashboard.html
+
+# Firebase credentials
+serviceAccountKey.json
+*.json
+
+# IDE files
+.vscode/
+.idea/
+*.swp
+*~
+.DS_Store
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+venv/
+env/
+
+# Logs
+*.log
